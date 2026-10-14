@@ -12,8 +12,39 @@ def gh(path):
     return json.loads(subprocess.check_output(["gh", "api", path]))
 
 
+def policy_path():
+    """Policy file for this adapter run; one per component in a monorepo."""
+    return os.environ.get("MINT_CONFIG") or os.environ.get("MINT_PRODUCTION_CONFIG") or ".mint.yaml"
+
+
 def mint(command, *arguments):
-    return subprocess.run(["mint", "release", "production", command, *arguments], check=True)
+    return subprocess.run(["mint", "release", "production", command, "--config", policy_path(), *arguments], check=True)
+
+
+def mint_status():
+    return json.loads(subprocess.check_output(["mint", "release", "production", "status", "--config", policy_path()]))
+
+
+def component_name(config):
+    return (config.get("Component") or {}).get("name", "")
+
+
+def proposal_marker(config):
+    """Marker prefix owned by this policy's scope; components use their own namespace."""
+    name = component_name(config)
+    return f"<!-- mint:component-proposal:{name}:" if name else "<!-- mint:proposal:"
+
+
+def hotfix_source_marker(config):
+    """Hotfix source PR marker prefix owned by this policy's scope."""
+    name = component_name(config)
+    return f"<!-- mint:component-hotfix-source:{name}:" if name else "<!-- mint:hotfix-source:"
+
+
+def hotfix_base_prefix(config):
+    """Production-base branch prefix owned by this policy's scope."""
+    name = component_name(config)
+    return f"mint-hotfix-base/{name}/GH-" if name else "mint-hotfix-base/GH-"
 
 
 def outputs(values):
@@ -30,13 +61,13 @@ def exact_number(value):
     return int(value)
 
 
-def source():
+def source(config):
     pr_number = os.environ.get("HOTFIX_PR", "")
     if not pr_number:
         outputs({"source_sha": os.environ["GITHUB_SHA"], "kind": "normal", "source_pr": 0, "baseline_id": ""})
         return
     pr = gh(f"repos/{os.environ['GITHUB_REPOSITORY']}/pulls/{exact_number(pr_number)}")
-    if not pr.get("merged") or pr["base"]["repo"]["full_name"] != os.environ["GITHUB_REPOSITORY"] or not pr["base"]["ref"].startswith("mint-hotfix-base/GH-"):
+    if not pr.get("merged") or pr["base"]["repo"]["full_name"] != os.environ["GITHUB_REPOSITORY"] or not pr["base"]["ref"].startswith(hotfix_base_prefix(config)) or hotfix_source_marker(config) not in (pr.get("body") or ""):
         raise ValueError("hotfix must be the exact merged production-base source PR")
     subprocess.run(["git", "fetch", "origin", pr["merge_commit_sha"]], check=True)
     result = Path(os.environ["RUNNER_TEMP"]) / "hotfix-version.json"
@@ -45,7 +76,7 @@ def source():
     outputs({"source_sha": version["source_sha"], "kind": "hotfix", "source_pr": pr["number"], "baseline_id": version["baseline_id"], "version": version["version"]})
 
 
-def promotion_request(event):
+def promotion_request(event, config):
     sha = os.environ["GITHUB_SHA"]
     repo = os.environ["GITHUB_REPOSITORY"]
     pulls = []
@@ -56,7 +87,7 @@ def promotion_request(event):
         if len(batch) < 100:
             break
         page += 1
-    matches = [pr for pr in pulls if pr.get("merged_at") and pr["merge_commit_sha"] == sha and pr["base"]["repo"]["full_name"] == repo and "<!-- mint:proposal:" in (pr.get("body") or "") and ":status -->" not in pr["body"]]
+    matches = [pr for pr in pulls if pr.get("merged_at") and pr["merge_commit_sha"] == sha and pr["base"]["repo"]["full_name"] == repo and proposal_marker(config) in (pr.get("body") or "") and ":status -->" not in pr["body"]]
     if not matches:
         outputs({"promote": "false"})
         return
@@ -107,12 +138,12 @@ def reconcile(event, config):
             raise ValueError("foreign proposal")
         # A reviewed production-base merge does not push main. Build it through
         # the trusted default-branch producer explicitly, using only its PR id.
-        if pr.get("merged") and "<!-- mint:hotfix-source:" in (pr.get("body") or ""):
+        if pr.get("merged") and hotfix_source_marker(config) in (pr.get("body") or ""):
             number = exact_number(pr["number"])
             workflow = config["BuildWorkflow"].split("/")[-1]
             subprocess.run(["gh", "workflow", "run", workflow, "--ref", config["DefaultBranch"], "-f", f"hotfix_pr={number}"], check=True)
             return
-        if "<!-- mint:proposal:" not in (pr.get("body") or "") or ":status -->" in pr["body"] or pr.get("merged"):
+        if proposal_marker(config) not in (pr.get("body") or "") or ":status -->" in pr["body"] or pr.get("merged"):
             return
         if event["action"] == "closed":
             action = "close"
@@ -124,8 +155,7 @@ def reconcile(event, config):
         if state["head"]["repo"]["full_name"] != os.environ["GITHUB_REPOSITORY"]:
             raise ValueError("foreign proposal")
         # Match durable PR identity; do not parse title or trust event labels.
-        snapshot = subprocess.check_output(["mint", "release", "production", "status"])
-        journal = json.loads(snapshot)
+        journal = mint_status()
         kind = next((k for k, p in journal["proposals"].items() if p["pr"] == pr["number"]), None)
         if kind is None:
             raise ValueError("unregistered release proposal")
@@ -138,7 +168,7 @@ def reconcile(event, config):
             raise ValueError("foreign or incomplete callback")
     if run and run["path"].split("@")[0] == config["PromotionWorkflow"]:
         # Exact merge SHA resolves the frozen journal intent; no latest-source lookup.
-        snapshot = json.loads(subprocess.check_output(["mint", "release", "production", "status"]))
+        snapshot = mint_status()
         matches = [i for i in snapshot["intents"].values() if i["merge_sha"] == run["head_sha"] and i.get("deployment_run_id") == run["id"]]
         if not matches:
             return
@@ -155,7 +185,7 @@ def reconcile(event, config):
     if run and (run["path"].split("@")[0] != config["BuildWorkflow"] or run["conclusion"] != "success"):
         return
     mint("scan")
-    snapshot=json.loads(subprocess.check_output(["mint","release","production","status"]))
+    snapshot=mint_status()
     if run:
         # Direct registration surfaces missing/invalid evidence for this specific event.
         artifacts=gh(f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run['id']}/artifacts?per_page=100")
@@ -183,14 +213,14 @@ if __name__ == "__main__":
     role = {"source": "source", "promote": "promote", "reconcile": "control"}.get(operation)
     if role is None:
         raise ValueError("unsupported event operation")
-    config = json.loads(subprocess.check_output(["mint", "release", "production", "adapter-policy", "--role", role, "--event", os.environ["GITHUB_EVENT_NAME"], "--run-id", os.environ["GITHUB_RUN_ID"]]))
+    config = json.loads(subprocess.check_output(["mint", "release", "production", "adapter-policy", "--config", policy_path(), "--role", role, "--event", os.environ["GITHUB_EVENT_NAME"], "--run-id", os.environ["GITHUB_RUN_ID"]]))
     if config["Repository"] != os.environ["GITHUB_REPOSITORY"]:
         raise ValueError("repository does not match authenticated policy")
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
     if sys.argv[1] == "source":
-        source()
+        source(config)
     elif sys.argv[1] == "promote":
-        promotion_request(event)
+        promotion_request(event, config)
     elif sys.argv[1] == "reconcile":
         reconcile(event, config)
     else:

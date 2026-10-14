@@ -19,18 +19,21 @@ func (o *productionOperation) review(ctx context.Context) (any, bool, error) {
 	}
 	s := o.snapshot.State
 	for _, p := range s.Proposals {
-		marker := "<!-- mint:proposal:" + p.ID + ":" + p.Kind + " -->"
+		marker := o.client.Component.ProposalMarker(p.ID, p.Kind)
 		if strings.Contains(pr.Body, marker) {
 			return o.intent(ctx, false)
 		}
 	}
-	if strings.Contains(pr.Body, "<!-- mint:hotfix-source:") {
-		if s.Baseline == nil || !o.client.IsReleaseAuthor(pr.User.Login) || !strings.HasPrefix(pr.Base.Ref, "mint-hotfix-base/GH-") {
+	if baseline, ok := o.client.Component.HotfixSourceBaseline(pr.Body); ok {
+		if s.Baseline == nil || baseline != s.Baseline.ID || !o.client.IsReleaseAuthor(pr.User.Login) || !strings.HasPrefix(pr.Base.Ref, o.client.Component.HotfixBasePrefix()) {
 			return nil, false, fmt.Errorf("hotfix source identity mismatch")
 		}
 		c := promotion.Candidate{Kind: "hotfix", SourceSHA: pr.Head.SHA, SourcePR: pr.Number, BaselineID: s.Baseline.ID, Version: s.Baseline.Candidate.Version}
 		changes, err := o.client.CollectChanges(ctx, o.proof, s, c, o.config.ControlPaths)
 		return changes, false, err
+	}
+	if o.client.Component.ForeignControlPR(pr.Body) {
+		return map[string]string{"status": "control PR for another Mint scope; native checks apply"}, false, nil
 	}
 	if strings.Contains(pr.Body, "<!-- mint:") {
 		return nil, false, fmt.Errorf("unknown Mint control identity")

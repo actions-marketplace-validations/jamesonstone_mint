@@ -112,10 +112,26 @@ func (p *Policy) validate() error {
 	if p.Artifact.Repository != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/-]*[A-Za-z0-9]$`).MatchString(p.Artifact.Repository) {
 		return fmt.Errorf("invalid artifact repository")
 	}
-	if p.ControlPaths == nil {
-		p.ControlPaths = []string{"CHANGELOG.md", ".mint/proposal.json", ".mint/summary.md"}
+	if p.Component != nil {
+		normalized := p.Component.normalized()
+		if err := normalized.validate(); err != nil {
+			return err
+		}
+		if normalized.IsZero() {
+			return fmt.Errorf("component requires a name")
+		}
+		// Deployment controllers write per-component journals; each needs its own
+		// workflow. Package and artifact policies run no controller.
+		if p.Mode == "deployment" && p.ControlWorkflow == "" {
+			return fmt.Errorf("component %s deployment policy requires its own control_workflow", normalized.Name)
+		}
+		p.Component = &normalized
 	}
-	if err := validateControlPaths(p.ControlPaths); err != nil {
+	component := p.ComponentScope()
+	if p.ControlPaths == nil {
+		p.ControlPaths = component.DefaultControlPaths()
+	}
+	if err := component.validateControlPaths(p.ControlPaths); err != nil {
 		return err
 	}
 	if err := validateCheckNames(p.RequiredChecks); err != nil {
@@ -127,7 +143,12 @@ func (p *Policy) validate() error {
 		if !ValidEnvironmentName(name) {
 			return fmt.Errorf("unsafe environment name %s", name)
 		}
-		if err := validateEnvironment(env); err != nil {
+		// Component journals are mint-release-state.<name>.<environment>; Git
+		// refs cannot end in ".lock".
+		if !component.IsZero() && name == "lock" {
+			return fmt.Errorf("component environments cannot be named lock")
+		}
+		if err := validateEnvironment(env, component); err != nil {
 			return fmt.Errorf("environment %s: %w", name, err)
 		}
 		if env.Operation == "" {
