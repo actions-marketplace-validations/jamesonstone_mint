@@ -87,3 +87,11 @@ The repository has a CLI scaffold but no GitHub Actions entrypoint. Consumers sh
 ## OPEN QUESTIONS
 
 none
+
+## v1.0.0 public packaging
+
+The Marketplace display name is `Mint Release Tooling`; workflow usage remains
+`jamesonstone/mint`. GitHub Actions builds the source on the runner with Go
+1.26.9 by default and needs no locally installed Mint binary. The local CLI is
+an optional manual helper. The setup action is pinned to its reviewed commit.
+Captured command output uses a delimiter absent from that output.

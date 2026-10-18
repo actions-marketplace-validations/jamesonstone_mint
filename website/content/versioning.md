@@ -51,7 +51,7 @@ mint release resolve --tag-prefix frontend/ --path frontend --path shared/ui
 - In the GitHub Action, set `tag-prefix` and `paths` (one pathspec per line):
 
 ```yaml
-- uses: jamesonstone/mint@v1
+- uses: jamesonstone/mint@v1.0.0
   with:
     command: release-publish
     tag-prefix: backend/
@@ -102,3 +102,13 @@ Without `--requested-tag`, Mint selects the highest strict SemVer tag on the exa
 ## Hotfix version series
 
 An isolated hotfix allocates the next unused patch in the verified deployed version's series. If that environment is on `v1.2.3` while ordinary work has reached `v1.3.0`, the fix remains in `v1.2.x`; occupied patches are skipped. Merge the correction back into ordinary source so later releases keep it.
+
+## v1 compatibility
+
+Mint's public CLI and action interfaces use semantic versioning. Incompatible
+public interface changes require a major release. Pin `v1.0.0` or its full commit
+SHA; generated publishing workflows default to `v1.0.0`. Upgrade deliberately
+after reviewing release notes. Schema 1 production controls remain compatible;
+schema 2 environment policies require trusted project adapters and explicit
+activation. Mint does not provision infrastructure or deploy applications by
+itself.

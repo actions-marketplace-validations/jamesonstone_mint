@@ -122,3 +122,10 @@ also has no workflow that uses Mint itself to publish Mint releases.
   steps.
 - README, constitution, tooling, testing, and progress docs reflect the new
   implemented behavior.
+
+## v1.0.0 transport hardening
+
+Release API requests require HTTPS, except loopback HTTP for local tests. URLs
+with embedded credentials are rejected. Clients use a 45-second default timeout
+and refuse redirects, including when a caller provides a custom transport. This
+prevents credentials from following a response to another endpoint.

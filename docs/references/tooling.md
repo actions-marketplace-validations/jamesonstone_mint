@@ -40,7 +40,7 @@
 - Consumers can use Mint from a workflow with `uses: jamesonstone/mint@<ref>`.
 - The action is a composite action that sets up Go, builds `./cmd/mint`, adds the built binary directory to `GITHUB_PATH`, and optionally runs a supported command.
 - Supported `command` input values are `version`, `help`, `changelog`, `release-resolve`, `release-select-tag`, `release-tag`, `github-release`, `release-publish`, and `none`.
-- The `go-version` input defaults to `1.25.5`, matching `go.mod`.
+- The `go-version` input defaults to `1.26.9`, matching `go.mod`.
 - `command: changelog` uses `prev-tag`, `current-tag`, `current-ref`, `owner`, `repo`, and `output` inputs.
 - `command: release-resolve` uses the `commitish` input and exposes typed release outputs.
 - `command: release-select-tag` uses `commitish` and optional `requested-tag`, then exposes `version_tag`, `tag_source`, `target_sha`, and `short_sha`.

@@ -81,7 +81,7 @@ In GitHub Actions, check out full history first:
     fetch-depth: 0
 
 - id: release
-  uses: jamesonstone/mint@v1
+  uses: jamesonstone/mint@v1.0.0
   with:
     command: release-resolve
     commitish: ${{ github.sha }}
@@ -101,7 +101,7 @@ In GitHub Actions:
 
 ```yaml
 - id: image
-  uses: jamesonstone/mint@v1
+  uses: jamesonstone/mint@v1.0.0
   with:
     command: release-select-tag
     commitish: HEAD
@@ -178,7 +178,7 @@ steps:
       fetch-depth: 0
 
   - id: release
-    uses: jamesonstone/mint@v1
+    uses: jamesonstone/mint@v1.0.0
     with:
       command: release-publish
       commitish: ${{ github.sha }}

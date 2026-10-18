@@ -62,6 +62,11 @@ Mint as a reusable code-agent skill.
 
 ## ⚙️ Installation
 
+GitHub Actions is the standard release path. The action builds Mint from its
+published source on the runner; users do not need a local Mint binary. Use the
+[GitHub Action quick start](#-github-action-quick-start) to configure a workflow.
+The local CLI below is an optional manual helper and requires Go 1.26.9 or newer.
+
 ```bash
 go install github.com/jamesonstone/mint/cmd/mint@latest
 ```
@@ -164,7 +169,7 @@ jobs:
     steps:
       - name: Run Mint
         id: mint
-        uses: jamesonstone/mint@v1
+        uses: jamesonstone/mint@v1.0.0
         with:
           command: version
 
@@ -172,9 +177,8 @@ jobs:
         run: echo "${{ steps.mint.outputs.output }}"
 ```
 
-Replace `v1` with the tag, branch, or commit SHA you publish for the action.
-Use a version tag such as `v1` for stable workflows after the action is
-released.
+Use the published `v1.0.0` tag, or pin its full reviewed commit SHA for an
+immutable source reference.
 
 The action builds the Go CLI from this repository, adds the generated `mint`
 binary to the workflow `PATH`, and then runs one supported command.
@@ -189,7 +193,7 @@ steps:
 
   - name: Generate changelog
     id: mint
-    uses: jamesonstone/mint@v1
+    uses: jamesonstone/mint@v1.0.0
     with:
       command: changelog
       prev-tag: v1.0.0
@@ -221,13 +225,13 @@ jobs:
 
       - name: Resolve release
         id: release
-        uses: jamesonstone/mint@v1
+        uses: jamesonstone/mint@v1.0.0
         with:
           command: release-resolve
           commitish: ${{ github.sha }}
 
       - name: Generate changelog
-        uses: jamesonstone/mint@v1
+        uses: jamesonstone/mint@v1.0.0
         with:
           command: changelog
           prev-tag: ${{ steps.release.outputs.base_tag }}
@@ -252,7 +256,7 @@ steps:
 
   - name: Resolve release
     id: release
-    uses: jamesonstone/mint@v1
+    uses: jamesonstone/mint@v1.0.0
     with:
       command: release-resolve
       commitish: ${{ github.sha }}
@@ -274,7 +278,7 @@ steps:
 
   - name: Select published image tag
     id: image
-    uses: jamesonstone/mint@v1
+    uses: jamesonstone/mint@v1.0.0
     with:
       command: release-select-tag
       commitish: HEAD
@@ -308,7 +312,7 @@ jobs:
 
       - name: Resolve release
         id: release
-        uses: jamesonstone/mint@v1
+        uses: jamesonstone/mint@v1.0.0
         with:
           command: release-resolve
           commitish: ${{ github.sha }}
@@ -325,7 +329,7 @@ jobs:
 
       - name: Create release tag
         id: tag
-        uses: jamesonstone/mint@v1
+        uses: jamesonstone/mint@v1.0.0
         with:
           command: release-tag
           release-tag: ${{ steps.release.outputs.version_tag }}
@@ -334,7 +338,7 @@ jobs:
 
       - name: Publish GitHub Release
         id: github_release
-        uses: jamesonstone/mint@v1
+        uses: jamesonstone/mint@v1.0.0
         with:
           command: github-release
           owner: ${{ github.repository_owner }}
@@ -370,7 +374,7 @@ jobs:
 
       - name: Publish release state
         id: release
-        uses: jamesonstone/mint@v1
+        uses: jamesonstone/mint@v1.0.0
         with:
           command: release-publish
           commitish: ${{ github.sha }}
@@ -389,8 +393,8 @@ Supported action inputs:
 
 | Input                | Default                  | Description                                                                        |
 | -------------------- | ------------------------ | ---------------------------------------------------------------------------------- |
-| `command`            | `version`                | Run `version`, `help`, `changelog`, `release-resolve`, `release-select-tag`, `release-tag`, `github-release`, `release-publish`, or `none` |
-| `go-version`         | `1.25.5`                 | Go version used to build the CLI on the runner                                     |
+| `command`            | `version`                | Run `version`, `help`, `changelog`, `release-resolve`, `release-select-tag`, `release-tag`, `github-release`, `release-publish`, `release-version-main`, `production-control`, `deployment-control`, or `none` |
+| `go-version`         | `1.26.9`                 | Go version used to build the CLI on the runner                                     |
 | `prev-tag`           | empty                    | Previous Git tag or ref; empty for first changelog release                         |
 | `current-tag`        | empty                    | Current Git tag or release version for changelog generation                        |
 | `current-ref`        | empty                    | Optional Git ref used as the changelog range end when `current-tag` is not created |
@@ -438,7 +442,7 @@ To install Mint into the workflow `PATH` without running it immediately:
 ```yaml
 steps:
   - name: Set up Mint
-    uses: jamesonstone/mint@v1
+    uses: jamesonstone/mint@v1.0.0
     with:
       command: none
 
@@ -653,3 +657,8 @@ merging policy does not activate cloud resources or migrate existing consumers.
 ## Maintainers
 
 Maintained by the [jamesonstone](https://github.com/jamesonstone) team.
+
+## License
+
+Mint is licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
+Bundled JetBrains Mono fonts retain their [SIL Open Font License](website/assets/fonts/OFL.txt).
