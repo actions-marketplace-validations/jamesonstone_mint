@@ -163,3 +163,9 @@ mint deployment status --config .mint.yaml --environment sandbox --format markdo
 ```
 
 Policy inspection works before activation. Shared status reads authenticated repository state and needs the configured token (default `GH_TOKEN`). Treat missing evidence as unknown. Test a sandbox release and recovery before relying on the controller for a critical environment.
+
+## License
+
+Mint is licensed under [Apache-2.0](https://github.com/jamesonstone/mint/blob/main/LICENSE).
+The [NOTICE](https://github.com/jamesonstone/mint/blob/main/NOTICE) preserves project
+attribution and identifies the bundled fonts' separate SIL Open Font License.
