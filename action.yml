@@ -1,4 +1,4 @@
-name: Mint
+name: Mint Release Tooling
 description: Build and run the Mint CLI in a GitHub Actions workflow.
 author: Jameson Stone
 branding:
@@ -12,7 +12,7 @@ inputs:
   go-version:
     description: Go version used to build the Mint CLI from the action source.
     required: false
-    default: "1.25.5"
+    default: "1.26.9"
   prev-tag:
     description: Previous Git tag or ref for changelog generation; empty for first release.
     required: false
@@ -165,7 +165,7 @@ runs:
   using: composite
   steps:
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
       with:
         go-version: ${{ inputs.go-version }}
         cache: false
@@ -305,8 +305,12 @@ runs:
           printf '%s\n' "$output"
         fi
 
+        delimiter="MINT_OUTPUT"
+        while [[ "$output" == *"$delimiter"* ]]; do
+          delimiter="${delimiter}_X"
+        done
         {
-          echo "output<<MINT_OUTPUT"
+          printf 'output<<%s\n' "$delimiter"
           printf '%s\n' "$output"
-          echo "MINT_OUTPUT"
+          printf '%s\n' "$delimiter"
         } >> "$GITHUB_OUTPUT"

@@ -1,10 +1,15 @@
 # Integrate Mint
 
+GitHub Actions is the standard release path. The action builds Mint from its
+published source on the runner and requires no locally installed binary. Use a
+reviewed immutable commit or the published `v1.0.0` tag. The local CLI is an
+optional manual helper.
+
 Start with the smallest release model your repository needs. Add environment control when you need reviewed promotion, verified history, or recovery across environments.
 
-## Install the CLI
+## Optional local CLI
 
-Use a published tag from [Mint releases](https://github.com/jamesonstone/mint/releases), rather than installing an unknown branch head. Mint's current build requires Go 1.25.5 or newer; check `go.mod` when upgrading.
+Use a published tag from [Mint releases](https://github.com/jamesonstone/mint/releases), rather than installing an unknown branch head. Mint's current build requires Go 1.26.9 or newer; check `go.mod` when upgrading.
 
 ```bash
 go install github.com/jamesonstone/mint/cmd/mint@<published-tag>
@@ -45,6 +50,14 @@ jobs:
 ```
 
 This writes `.version` in the runner workspace without the leading `v`. It does not commit that file, build containers, or deploy. Add application-owned build steps explicitly. Use one release publisher; remove competing automatic version/tag publishers when adopting Mint.
+
+The action uses Go 1.26.9 by default. Override `go-version` only with a supported,
+security-patched Go release. Release API URLs must use HTTPS; redirects are refused
+so the release credential stays with the configured API endpoint. Read-only
+commands need only `contents: read`; grant write permissions only to trusted
+release jobs. Never run write-enabled release commands on untrusted pull-request
+code or pass untrusted values as `github-api-url`. Command stdout is captured with
+a collision-safe multiline output delimiter.
 
 For environment-controlled deployment, follow the next steps instead of publishing every source build as a canonical release.
 

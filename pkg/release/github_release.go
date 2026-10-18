@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -66,14 +68,26 @@ func PublishGitHubRelease(ctx context.Context, opts GitHubReleaseOptions) (GitHu
 	if err != nil {
 		return GitHubReleaseResult{}, validationError("api-url", "invalid GitHub API URL: %v", err)
 	}
-	if baseURL.Scheme == "" || baseURL.Host == "" {
-		return GitHubReleaseResult{}, validationError("api-url", "must be an absolute URL")
+	loopback := baseURL.Hostname() == "localhost"
+	if ip := net.ParseIP(baseURL.Hostname()); ip != nil {
+		loopback = ip.IsLoopback()
+	}
+	if baseURL.Host == "" || baseURL.User != nil || (baseURL.Scheme != "https" && !(baseURL.Scheme == "http" && loopback)) {
+		return GitHubReleaseResult{}, validationError("api-url", "must use HTTPS (loopback HTTP tests excepted) and contain no credentials")
 	}
 
 	client := normalized.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: 45 * time.Second}
 	}
+
+	// Preserve caller transports without allowing redirects to forward credentials.
+	safeClient := *client
+	safeClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if safeClient.Timeout == 0 {
+		safeClient.Timeout = 45 * time.Second
+	}
+	client = &safeClient
 
 	existing, found, err := getGitHubReleaseByTag(ctx, client, baseURL, normalized)
 	if err != nil {
