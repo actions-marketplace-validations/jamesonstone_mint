@@ -11,12 +11,19 @@ import (
 
 // PublishHotfixSource exposes the isolated fix as a human-reviewed source PR against
 // an immutable production base branch. It does not merge, build or deploy it.
-func (c Client) PublishHotfixSource(ctx context.Context, source HotfixSource, baseline Baseline, issue int) (PullRequest, error) {
+func (c Client) PublishHotfixSource(ctx context.Context, source HotfixSource, baseline Baseline, issue int, tickets ...string) (PullRequest, error) {
 	var none PullRequest
-	if source.Branch != fmt.Sprintf("GH-%d", issue) || source.BaselineID != baseline.ID {
+	id, ticket, err := HotfixRequestIdentity(issue, tickets...)
+	if err != nil {
+		return none, err
+	}
+	expectedBranch := c.Component.hotfixSourceBranch(id, ticket)
+	// Exact legacy Linear branches remain publishable after proven recovery.
+	legacyLinear := ticket != "" && source.Branch == id
+	if (source.Branch != expectedBranch && !legacyLinear) || source.BaselineID != baseline.ID {
 		return none, fmt.Errorf("invalid governed hotfix source")
 	}
-	baseBranch := c.Component.HotfixBaseBranch(issue)
+	baseBranch := c.Component.hotfixRequestBase(id)
 	var ref gitObject
 	status, err := c.request(ctx, "GET", c.repoPath("git/ref/heads/"+baseBranch), nil, &ref)
 	if err != nil {
@@ -61,8 +68,11 @@ func (c Client) PublishHotfixSource(ctx context.Context, source HotfixSource, ba
 			return none, fmt.Errorf("recovered hotfix source changed")
 		}
 	}
-	marker := c.Component.HotfixSourceMarker(issue, baseline.ID)
+	marker := c.Component.hotfixRequestMarker(id, baseline.ID)
 	body := marker + "\n\nIsolated production hotfix against `" + baseline.Candidate.Version + "` (`" + baseline.Candidate.SourceSHA + "`). Ordinary queued main changes are excluded.\n\n"
+	if ticket != "" {
+		body += "Tracking: " + ticket + "\n\n"
+	}
 	for _, fix := range source.Fixes {
 		body += "- Original fix: https://github.com/" + c.Repository + "/commit/" + fix + "\n"
 	}
@@ -81,7 +91,7 @@ func (c Client) PublishHotfixSource(ctx context.Context, source HotfixSource, ba
 	if recovered != nil {
 		pull = *recovered
 	} else {
-		status, err = c.request(ctx, "POST", c.repoPath("pulls"), map[string]any{"title": fmt.Sprintf("fix(GH-%d): :bug: isolated production hotfix", issue), "head": source.Branch, "base": baseBranch, "body": body, "draft": false}, &pull)
+		status, err = c.request(ctx, "POST", c.repoPath("pulls"), map[string]any{"title": fmt.Sprintf("fix(%s): :bug: isolated production hotfix", id), "head": source.Branch, "base": baseBranch, "body": body, "draft": false}, &pull)
 		if err != nil {
 			return none, err
 		}
@@ -102,8 +112,7 @@ func (c Client) VerifyHotfixSource(ctx context.Context, candidate Candidate, req
 	if err != nil {
 		return err
 	}
-	baseline, marked := c.Component.HotfixSourceBaseline(pr.Body)
-	if !pr.Merged || pr.MergeSHA != candidate.SourceSHA || !c.IsReleaseAuthor(pr.User.Login) || !strings.HasPrefix(pr.Base.Ref, c.Component.HotfixBasePrefix()) || !marked || baseline != candidate.BaselineID {
+	if !pr.Merged || pr.MergeSHA != candidate.SourceSHA || !c.IsReleaseAuthor(pr.User.Login) || !c.Component.MatchesHotfixSource(pr.Body, pr.Base.Ref, candidate.BaselineID) {
 		return fmt.Errorf("hotfix has no independently reviewed production-base source PR")
 	}
 	return c.CheckHead(ctx, pr, required)

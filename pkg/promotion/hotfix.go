@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -17,6 +16,8 @@ type HotfixOptions struct {
 	WorkDir                       string
 	Baseline                      Baseline
 	Issue                         int
+	TicketURL                     string
+	Component                     Component
 	Fixes                         []string
 	CommitterName, CommitterEmail string
 }
@@ -35,8 +36,9 @@ type HotfixSource struct {
 // PrepareHotfix creates a task-owned clone from production and cherry-picks only
 // explicit reviewed commits. On conflicts it preserves that clone for resolution.
 func PrepareHotfix(ctx context.Context, o HotfixOptions) (HotfixSource, error) {
-	result := HotfixSource{Branch: "GH-" + strconv.Itoa(o.Issue), BaselineID: o.Baseline.ID, Fixes: append([]string{}, o.Fixes...)}
-	if o.Issue <= 0 || o.Baseline.ID == "" || !shaPattern.MatchString(o.Baseline.Candidate.SourceSHA) || o.CommitterName == "" || o.CommitterEmail == "" {
+	id, ticket, identityErr := HotfixRequestIdentity(o.Issue, o.TicketURL)
+	result := HotfixSource{Branch: o.Component.hotfixSourceBranch(id, ticket), BaselineID: o.Baseline.ID, Fixes: append([]string{}, o.Fixes...)}
+	if identityErr != nil || (!o.Component.IsZero() && !componentNamePattern.MatchString(o.Component.Name)) || o.Baseline.ID == "" || !shaPattern.MatchString(o.Baseline.Candidate.SourceSHA) || o.CommitterName == "" || o.CommitterEmail == "" {
 		return result, fmt.Errorf("hotfix requires a verified base, governed issue, explicit fixes and human identity")
 	}
 	seen := map[string]bool{}
@@ -88,6 +90,12 @@ func PrepareHotfix(ctx context.Context, o HotfixOptions) (HotfixSource, error) {
 		result.PatchIDs = append(result.PatchIDs, id)
 	}
 	metadata := map[string]any{"schema_version": 1, "baseline_id": result.BaselineID, "baseline_sha": o.Baseline.Candidate.SourceSHA, "fixes": result.Fixes, "patch_ids": result.PatchIDs, "issue": o.Issue}
+	if ticket != "" {
+		metadata["ticket_url"] = ticket
+		if !o.Component.IsZero() {
+			metadata["component"] = o.Component.Name
+		}
+	}
 	data, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
 		return result, err
@@ -101,7 +109,7 @@ func PrepareHotfix(ctx context.Context, o HotfixOptions) (HotfixSource, error) {
 	if _, err := run("add", ".mint/hotfix.json"); err != nil {
 		return result, err
 	}
-	if _, err := run("commit", "-m", fmt.Sprintf("fix(GH-%d): :bug: isolated production hotfix", o.Issue)); err != nil {
+	if _, err := run("commit", "-m", fmt.Sprintf("fix(%s): :bug: isolated production hotfix", id)); err != nil {
 		return result, err
 	}
 	result.SourceSHA, err = run("rev-parse", "HEAD")
